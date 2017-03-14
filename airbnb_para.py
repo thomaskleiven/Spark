@@ -15,20 +15,17 @@ import csv
 from multiprocessing import Pool
 
 def main():
-    #getNumberOfDistinctCities()
-    #getAverageBookPricePrCityPrNight()
+    getNumberOfDistinctCities()
+    getAverageBookPricePrCityPrNight()
     #getListingsColumnNames()
-    #getAverageListingsPrHost()
-    #getPercentageOfHostsWithMoreThanOneListing()
-    #getHostsWithHighestIncome()
-    #getAverageListingsPrHostFromHostTotalListingsCount()
-    #getMaxReviewers()
-    #getBestGuestInEachCity()
-    #getBestGuest()
-    #getAveragePricePrNightPrRoom()
-    #getAverageNumberOfReviewsPrMonth()
-    #getNeighborHood()
+    getHostsWithHighestIncome()
+    getAverageListingsPrHostFromHostTotalListingsCount()
+    getBestGuestInEachCity()
+    getBestGuest()
+    getAveragePricePrNightPrRoom()
+    getAverageNumberOfReviewsPrMonth()
     get()
+    bookedPrNight()
 
 
 sc = SparkContext()
@@ -95,43 +92,38 @@ def getListingsColumnNames():                                                   
         print listings.take(1)[0][name]
 
 def getAverageBookPricePrCityPrNight():
-    pri = sqlCtx.sql("SELECT city, ROUND(AVG(price),2) FROM listings GROUP BY city").collect()
-    #print len(pri)
-    with open('task3.txt', 'a') as txt_file:
-        for i in range(0, len(pri)):
-            city = pri[i][0]
-            price = pri[i][1]
-            txt_file.write("Average price pr night in %s: $%.2f \n"%(city, price))
-
+    df = sqlCtx.sql("SELECT city, ROUND(AVG(price),2) AS price FROM listings GROUP BY city")
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3a.csv")
 
 def getAveragePricePrNightPrRoom():
-    result = sqlCtx.sql("       SELECT DISTINCT city, room_type, MIN(avgprice) FROM \
-                                (SELECT lower(ltrim(rtrim(room_type))) AS room_type, \
-                                city AS city, round(AVG(price),2) AS avgprice FROM \
-                                listings GROUP BY city,room_type ORDER BY city) GROUP BY city, room_type ORDER BY city, room_type").collect()
-
-    with open('task3.txt', 'a') as txt_file:
-        for i in range(0, len(result)):
-            txt_file.write("Average price for %s in %s is $%.2f\n"%(result[i][1], result[i][0], result[i][2]))
+    df = sqlCtx.sql("    SELECT DISTINCT city, room_type, MIN(avgprice) FROM \
+                        (SELECT lower(ltrim(rtrim(room_type))) AS room_type, \
+                        city AS city, round(AVG(price),2) AS avgprice FROM \
+                        listings GROUP BY city,room_type ORDER BY city) GROUP BY city, room_type ORDER BY city, room_type")
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3b.csv")
 
 def getAverageNumberOfReviewsPrMonth():
-    result =  sqlCtx.sql(" SELECT city, round(SUM(reviews_per_month),2) as count \
+    df =  sqlCtx.sql("  SELECT city, round(SUM(reviews_per_month),2) as count \
                         FROM listings \
                         GROUP BY city \
-                        ORDER BY count DESC").collect()
+                        ORDER BY count DESC")
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3c.csv")
 
-    with open('task3.txt', 'a') as txt_file:
-        txt_file.write("Average number of reviews pr month in %s is %d\n"%(result[0][0], result[0][1]))
-        txt_file.write("Average number of reviews pr month in %s is %d\n"%(result[1][0], result[1][1]))
-        txt_file.write("Average number of reviews pr month in %s is %d\n"%(result[2][0], result[2][1]))
+def bookedPrNight():
+    df = sqlCtx.sql(" SELECT city, round(SUM(reviews_per_month)*((12.0*3.0)/0.7),2) as count \
+                        FROM listing \
+                        GROUP BY city \
+                        ORDER BY count DESC")
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3d.csv")
+
 
 
 def getNumberOfDistinctCities():                                                #Number of distinct cities
     numCitys = sqlCtx.sql("SELECT COUNT(DISTINCT LOWER(LTRIM(RTRIM(city)))) FROM listings").collect()
     cities = sqlCtx.sql("SELECT DISTINCT LOWER(LTRIM(RTRIM(city))) FROM listings").collect()
-    with open('task3.txt', 'a') as txt_file:
-        txt_file.write("Number of distinct cities: %s \n"%numCitys[0])
-        txt_file.write("Cities: \n")
+    with open('task3.csv', 'w') as txt_file:
+        txt_file.write("Number of distinct cities, %s \n"%numCitys[0])
+        txt_file.write("Cities \n")
         for city in cities:
             txt_file.write("%s \n"%city[0])
 
@@ -141,41 +133,24 @@ def getNumberOfDistinctValuesInListingsColumns():                               
         sqlCtx.sql("SELECT COUNT(DISTINCT %s) AS %s FROM listings"%(listings.take(1)[0][name], listings.take(1)[0][name])).show()
 
 
-def getHostsWithHighestIncome():
-
-    cities = ['New York', 'Seattle', 'San Francisco']
-    joined = listings.join(calendar, listings.id == calendar.listing_id)
-    joined.createOrReplaceTempView('j')
-    for city in cities:
-        hosts = sqlCtx.sql("    SELECT city, host_id, host_name, SUM(price) AS t FROM j\
-                                WHERE available = 'f' AND city = '%s'\
-                                GROUP BY host_id, host_name, city \
-                                ORDER BY city DESC, t DESC LIMIT 3"%(city)).collect()
-        with open('task4.txt', 'a') as txt_file:
-            txt_file.write("The host with highest income in %s is named %s, has ID-number: %s and has total income of: $%.2f \n" %(hosts[0][0], hosts[0][2], hosts[0][1], hosts[0][3]))
-            txt_file.write("The host with the second highest income in %s is named %s, has ID-number: %s and has total income of: $%.2f \n"%(hosts[1][0], hosts[1][2], hosts[1][1], hosts[1][3]))
-            txt_file.write("The host with the third highest income in %s is named %s, has ID-number: %s and has total income of: $%.2f \n"%(hosts[2][0], hosts[2][2], hosts[2][1], hosts[2][3]))
-
-
 def getAverageListingsPrHostFromHostTotalListingsCount():
     avgListCount = sqlCtx.sql("  SELECT ROUND(AVG(host_total_listings_count),1) AS avg FROM listings").collect()
     numHosts = sqlCtx.sql("  SELECT COUNT(DISTINCT host_id) FROM listings WHERE host_total_listings_count > 1").collect()
     totNumHosts = sqlCtx.sql("  SELECT COUNT(DISTINCT host_id) FROM listings").collect()
     percentage = float(numHosts[0][0])/float(totNumHosts[0][0])
-    with open('task4.txt', 'w') as txt_file:
-        txt_file.write("Average number of listings pr host: %s \n"%(avgListCount[0]))
-        txt_file.write("Percentage of hosts with more than one listing: %.2f \n"%(percentage))
-    ##print sqlCtx.sql( " SELECT MAX(host_total_listings_count) AS totallistings, host_id FROM listings GROUP BY host_id ORDER BY totallistings DESC").show(500)
-
+    with open('task4b.csv','w') as csv_f:
+        csv_f.write("Percentage, %.2f"%float(percentage))
+    with open('task4a.csv', 'w') as csv_f:
+        csv_f.write("AverageListingCoutPrHost, %s"%avgListCount[0])
 
 def getBestGuest():
     joined = reviews.join(calendar, reviews.listing_id == calendar.listing_id)
     joined = joined.join(listings, joined.id == listings.id)
     joined.createOrReplaceTempView('joined')
-    result = sqlCtx.sql("    SELECT reviewer_id, reviewer_name, SUM(price) as p FROM joined \
-                    WHERE available = 'f' GROUP BY reviewer_id, reviewer_name ORDER BY p DESC").collect()
-    with open('task5.txt', 'a') as txt_file:
-        txt_file.write("The host who has spent the most money is named %s has ID-number: %s and has spent $%.2f"%(result[0][1], result[0][0], result[0][2]))
+    df = sqlCtx.sql("   SELECT reviewer_id, reviewer_name, SUM(price) as p FROM joined \
+                        WHERE available = 'f' GROUP BY reviewer_id, reviewer_name ORDER BY p DESC")
+
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task5b.csv")
 
 def getBestGuestInEachCity():
     #cities = ['New York', 'Seattle', 'San Francisco']
@@ -185,46 +160,21 @@ def getBestGuestInEachCity():
     joined = sqlCtx.sql("SELECT city, reviewer_id, reviewer_name, COUNT(listing_id) AS bookings FROM joined GROUP BY city, reviewer_id, reviewer_name ORDER BY bookings DESC")
     joined.createOrReplaceTempView('joined')
 
-    sqlCtx.sql("SELECT city, reviewer_id, reviewer_name, bookings FROM (SELECT city, reviewer_id, reviewer_name, bookings, dense_rank() OVER (PARTITION BY city ORDER BY bookings DESC) as rank FROM joined GROUP BY city, reviewer_id, reviewer_name, bookings) tmp WHERE rank <= 3 GROUP BY city, reviewer_id, reviewer_name, bookings").show()
+    df = sqlCtx.sql("SELECT city, reviewer_id, reviewer_name, bookings FROM (SELECT city, reviewer_id, reviewer_name, bookings, dense_rank() OVER (PARTITION BY city ORDER BY bookings DESC) as rank FROM joined GROUP BY city, reviewer_id, reviewer_name, bookings) tmp WHERE rank <= 3 GROUP BY city, reviewer_id, reviewer_name, bookings")
 
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task5a.csv")
 
+def getHostsWithHighestIncome():
+    joined = listings.join(calendar, listings.id == calendar.listing_id)
+    joined.createOrReplaceTempView('joined')
 
+    joined = sqlCtx.sql("SELECT city, host_id, host_name, SUM(price) AS totprice FROM joined WHERE available = 'f' GROUP BY city, host_id, host_name ORDER BY totprice DESC")
+    joined.createOrReplaceTempView('joined')
 
-def getNeighborHood():
-    with open('airbnb_datasets/neighbourhoods.geojson') as f:
-        data = json.load(f)
-    results = sqlCtx.sql("SELECT latitude, longitude, id FROM listings WHERE city = 'New York'").collect()
+    df = sqlCtx.sql("SELECT city, host_id, host_name, totprice FROM (SELECT city, host_id, host_name, totprice, dense_rank() OVER (PARTITION BY city ORDER BY totprice DESC) AS rank FROM joined GROUP BY city, host_name, host_id, totprice) tmp WHERE rank <= 3 GROUP BY city, host_id, host_name, totprice")
 
-    assert( len(data['features'][0]['geometry']['coordinates'][0]) == 1 )
-    assert( len(data['features'][0]['geometry']['coordinates']) == 1 )
-    cross = 0
-    num = 0
-    neighbourhoods = np.array([None]*len(results))
+    df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task4c.csv")
 
-    for result in results:
-        xPos = float(result[0])
-        yPos = float(result[1])
-        for feature in data['features']:
-            N = len(feature['geometry']['coordinates'][0][0])
-            j = N - 1
-            vertx = np.zeros(N)
-            verty = np.zeros(N)
-
-            for k in range(0, N):
-                vertx[k] = float(feature['geometry']['coordinates'][0][0][k][1])
-                verty[k] = float(feature['geometry']['coordinates'][0][0][k][0])
-            cross = 0
-            for i in range(0,N - 1):
-                if(((verty[i] > yPos) != (verty[j]>yPos)) and (xPos < (vertx[j] - vertx[i]) * ((yPos-verty[i])/(verty[j]-verty[i]))+vertx[i])):
-                    cross += 1
-                j = i
-            if(cross%2 != 0):
-                neighbourhoods[i] = feature['properties']['neighbourhood'], xPos, yPos
-                break
-
-    with open('neighs.csv', 'wb') as txt_file:
-        writer = csv.writer(txt_file)
-        writer.writerows(neighbourhoods)
 
 
 def inner_loop(result):
@@ -259,9 +209,11 @@ def get():
 
     print len(neighbourhoods)
     with open('neigh_s.csv', 'w') as csv_f:
+        count = 0
         for neighbourhood in neighbourhoods:
             if(neighbourhood != None):
-                csv_f.write("%s, %.10f, %.10f\n"%(neighbourhood[0], neighbourhood[1], neighbourhood[2]))
+                csv_f.write("%s, %.10f, %.10f, %s\n"%(neighbourhood[0], neighbourhood[1], neighbourhood[2], results[count][2]))
+                count += 1
 
 
 
