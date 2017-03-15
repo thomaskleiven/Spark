@@ -208,7 +208,7 @@ def inner_loop(result):                                                         
             if(verty[k] < ymin): ymin = verty[k]
 
         cross = 0
-        if(xPos < xmin or xPos > xmax or yPos < ymin or yPos > ymax):           #Check if given point is inside given square
+        if(xPos < xmin or xPos > xmax or yPos < ymin or yPos > ymax):           #Check if given point is inside max/min values of given polygon
             continue
         #Compare each slope from given point to each corner, and check if given point is inside or outside y-domain of polygon
         for i in range(0,N - 1):
