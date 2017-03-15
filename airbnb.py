@@ -20,13 +20,13 @@ def main():
     #getAverageListingsPrHost()
     #getPercentageOfHostsWithMoreThanOneListing()
     #getHostsWithHighestIncome()
-    getAverageListingsPrHostFromHostTotalListingsCount()
+    #getAverageListingsPrHostFromHostTotalListingsCount()
     #getMaxReviewers()
     #getBestGuestInEachCity()
     #getBestGuest()
     #getAveragePricePrNightPrRoom()
     #getAverageNumberOfReviewsPrMonth()
-    #getNeighborHood()
+    getNeighborHood()
 
 
 sc = SparkContext()
@@ -193,7 +193,7 @@ def getBestGuestInEachCity():
 def getNeighborHood():
     with open('airbnb_datasets/neighbourhoods.geojson') as f:
         data = json.load(f)
-    results = sqlCtx.sql("SELECT latitude, longitude, id FROM listings WHERE city = 'New York'").collect()
+    results = sqlCtx.sql("SELECT latitude, longitude, id FROM listings WHERE city = 'Seattle'").collect()
 
     assert( len(data['features'][0]['geometry']['coordinates'][0]) == 1 )
     assert( len(data['features'][0]['geometry']['coordinates']) == 1 )
