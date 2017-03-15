@@ -200,8 +200,8 @@ def inner_loop(result):                                                         
         ymax = 0
         ymin = 1E6
         for k in range(0, N):
-            vertx[k] = float(feature['geometry']['coordinates'][0][0][k][1])    #Collect vertices in given polygon
-            verty[k] = float(feature['geometry']['coordinates'][0][0][k][0])
+            vertx[k] = float(feature['geometry']['coordinates'][0][0][k][1])    #Collect x-crd of vertices in given polygon
+            verty[k] = float(feature['geometry']['coordinates'][0][0][k][0])    #Collect y-crd of vertices in given polygon
             if(vertx[k] > xmax): xmax = vertx[k]                                #Collect min/max values of polygon
             if(vertx[k] < xmin): xmin = vertx[k]
             if(verty[k] > ymax): ymax = verty[k]
