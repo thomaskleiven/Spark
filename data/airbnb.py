@@ -2,20 +2,24 @@
 import sys
 sys.path.append("/usr/local/spark/python/")
 from pyspark import SparkConf, SparkContext
-from pyspark.sql import SQLContext
+from pyspark.sql import SQLContext, SparkSession
 from pyspark.sql import *
 from pyspark.sql.types import *
+import numpy as np
 from pyspark.sql import functions as funcs
 from pyspark.sql import functions as col
 from pyspark.sql.functions import *
-import numpy as np
 from multiprocessing import Pool
+import json
+import numpy as np
 
 
 def main():
     air = airbnb()
 
-    air.parallellize_neighbor()
+    #air.getAmenities()
+    #air.getNumberOfDistinctValuesInListingsColumns()
+    #air.amountSpentEachYear()
     #air.getNumberOfDistinctCities()
     #air.getAverageBookPricePrCityPrNight()
     #getListingsColumnNames()
@@ -25,12 +29,18 @@ def main():
     #air.getBestGuest()
     #air.getAveragePricePrNightPrRoom()
     #air.getAverageNumberOfReviewsPrMonth()
+    air.parallellize_neighbor()
     #air.bookedPrNight()
 
 class airbnb():
     def __init__(self):
         self.sc = SparkContext()
         self.sqlCtx = SQLContext(self.sc)
+        self.spark = SparkSession \
+        .builder \
+        .appName("Python Spark SQL basic example") \
+        .config("spark.some.config.option", "some-value") \
+        .getOrCreate()
 
         self.calendar = self.getCalendar()
         self.listings = self.getListings()
@@ -42,6 +52,7 @@ class airbnb():
         self.sqlCtx.registerDataFrameAsTable(self.calendar, "calendar")         #Register Data Frame
         self.sqlCtx.registerDataFrameAsTable(self.reviews, "reviews")
         self.sqlCtx.registerDataFrameAsTable(self.listings, "listings")
+        self.count = 0
 
     def getCalendar(self):
         calendar_rdd = self.sc.textFile("airbnb_datasets/calendar_us.csv").map(lambda x: x.split('\t')).filter(lambda line: line[0] != "listing_id").map(lambda s: (int(s[0]), s[1], s[2]))
@@ -86,6 +97,27 @@ class airbnb():
 ################################################################################ Begin query
 ################################################################################
 
+    def amountSpentEachYear(self):
+        avrPrice = self.getAvgPricePerCity().groupBy("city").avg("price")
+        avrPrice = avrPrice.selectExpr("city as city", "`avg(price)` as price")
+        bookedPerYear = self.bookedPrNight()
+        self.sqlCtx.registerDataFrameAsTable(avrPrice, "avgPrice")
+        self.sqlCtx.registerDataFrameAsTable(bookedPerYear, "booked")
+        df = self.sqlCtx.sql(" SELECT avgPrice.city, SUM(avgPrice.price * booked.count) AS MoneyOnAir \
+                            FROM avgPrice \
+                            INNER JOIN booked \
+                            ON avgPrice.city = lower(booked.city) \
+                            GROUP BY avgPrice.city")
+        df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3e.csv")
+
+
+
+    def getAvgPricePerCity(self):
+        return self.sqlCtx.sql(" SELECT DISTINCT city, MIN(avgprice) AS price FROM \
+                        (SELECT lower(ltrim(rtrim(city))) AS city, round(AVG(price),2) AS avgprice FROM \
+                        listings GROUP BY city) GROUP BY city ORDER BY city")
+
+
     def getListingsColumnNames(self):
         listings = getListings()
         for name in range(0, len(listings.take(1)[0])):
@@ -96,11 +128,12 @@ class airbnb():
         df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3a.csv")
 
     def getAveragePricePrNightPrRoom(self):
-        df = self.sqlCtx.sql("  SELECT DISTINCT city, room_type, MIN(avgprice) FROM \
+        df = self.sqlCtx.sql("  SELECT DISTINCT city, room_type, MIN(avgprice) as price FROM \
                                 (SELECT lower(ltrim(rtrim(room_type))) AS room_type, \
                                 city AS city, round(AVG(price),2) AS avgprice FROM \
                                 listings GROUP BY city,room_type ORDER BY city) GROUP BY city, room_type ORDER BY city, room_type")
         df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3b.csv")
+
 
     def getAverageNumberOfReviewsPrMonth(self):
         df =  self.sqlCtx.sql(" SELECT city, round(SUM(reviews_per_month),2) as count \
@@ -111,11 +144,11 @@ class airbnb():
 
     def bookedPrNight(self):
         df = self.sqlCtx.sql("  SELECT city, round(SUM(reviews_per_month)*((12.0*3.0)/0.7),2) as count \
-                                FROM listing \
+                                FROM listings \
                                 GROUP BY city \
                                 ORDER BY count DESC")
         df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task3d.csv")
-
+        return df
 
 
     def getNumberOfDistinctCities(self):                                        #Number of distinct cities
@@ -128,9 +161,16 @@ class airbnb():
                 txt_file.write("%s \n"%city[0])
 
     def getNumberOfDistinctValuesInListingsColumns(self):                       #Number of distinct values in each column in listings
-        listings = getListings()
-        for name in range(0, len(listings.take(1)[0])):
-            self.sqlCtx.sql("SELECT COUNT(DISTINCT %s) AS %s FROM listings"%(listings.take(1)[0][name], listings.take(1)[0][name])).show()
+        distinct_values = []
+        for column in self.listings.columns:
+            num = self.listings.select(column).distinct().count()
+            distinct_values.append(['column_name: %s'%column, 'number_of_distinct: %d'%num])
+
+        with open('task2b.csv', 'w') as csv_f:
+            for line in distinct_values:
+                csv_f.write("%s"%line)
+
+
 
 
     def getAverageListingsPrHostFromHostTotalListingsCount(self):
@@ -148,7 +188,7 @@ class airbnb():
         joined = joined.join(self.listings, joined.id == self.listings.id)
         joined.createOrReplaceTempView('joined')
         df = self.sqlCtx.sql("   SELECT reviewer_id, reviewer_name, SUM(price) as p FROM joined \
-                                WHERE available = 'f' GROUP BY reviewer_id, reviewer_name ORDER BY p DESC")
+                                WHERE available = 'f' GROUP BY reviewer_id, reviewer_name ORDER BY p DESC LIMIT 1")
 
         df.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("results/task5b.csv")
 
@@ -177,46 +217,72 @@ class airbnb():
         global data
         with open('airbnb_datasets/neighbourhoods.geojson') as f:
             data = json.load(f)
-        neighbourhoods = Pool(4).map(inner_loop, results)                       #Parallellize into four independent subtasks
-        with open('neigh_s.csv', 'w') as csv_f:
-            count = 0
+        neighbourhoods = Pool(4).map(inner_loop, results)
+        with open('Seattle_neighborhood.csv', 'w') as csv_f:
             for neighbourhood in neighbourhoods:
                 if(neighbourhood != None):
-                    csv_f.write("%s, %.10f, %.10f, %s\n"%(neighbourhood[0], neighbourhood[1], neighbourhood[2], results[count][2]))
-                    count += 1
+                    csv_f.write("%s, %.10f, %.10f, %s\n"%(neighbourhood[0], neighbourhood[1], neighbourhood[2], neighbourhood[3]))
 
-def inner_loop(result):                                                         #Inner loop in the parallell
 
+    def getAmenities(self):
+        seattle_ray_casting = self.sc.textFile("dat.csv")                       #neighbourhood, long, lat, id
+        seattleRayFile = seattle_ray_casting.map(lambda x: x.split(','))
+        seattle_field = []
+        seattle_field.append(StructField("neighbourhood", StringType(), False))
+        seattle_field.append(StructField("lat", StringType(), False))
+        seattle_field.append(StructField("lon", StringType(), False))
+        seattle_field.append(StructField("id", StringType(), False))
+        seattle_schema = StructType(seattle_field)
+        seattleDf = self.sqlCtx.createDataFrame(seattleRayFile, seattle_schema)
+        seattleDf = seattleDf.withColumn('id', ltrim(seattleDf.id))
+
+        joined = self.listings.join(seattleDf, self.listings.id == seattleDf.id)
+        joined.createOrReplaceTempView('joined')
+
+        rows_am = joined.select('amenities','neighbourhood').collect()
+
+        def parseAmenities(amenities):
+            array = amenities\
+                .replace('"','')\
+                .replace('{','')\
+                .replace('}','')\
+                .replace(' ',',')\
+                .split(',')
+            return array
+
+        flat_array = []
+        for row in rows_am:
+            row_amenities = parseAmenities(row.amenities)
+            for amenity in row_amenities:
+                flat_array.append({'amenity': str(amenity),'neighbourhood': str(row.neighbourhood)})
+
+        am_RDD = self.sc.parallelize(flat_array)
+        am_df = self.spark.read.json(am_RDD)
+
+        df = am_df.distinct().select('neighbourhood','amenity')
+        df = df.rdd.groupByKey().mapValues(list).toDF(['neighbourhood','amenities'])
+        df.rdd.coalesce(1).saveAsTextFile('task6b.csv')
+
+#Outside of class for easy parallelize
+def inner_loop(result):
     xPos = float(result[0])
     yPos = float(result[1])
     for feature in data['features']:
-        N = len(feature['geometry']['coordinates'][0][0])                       #Number of corners in polygon
+        N = len(feature['geometry']['coordinates'][0][0])
         j = N - 1
-        vertx = np.zeros(N)                                                     #X-crd of polygon
-        verty = np.zeros(N)                                                     #Y-crd of polygon
+        vertx = np.zeros(N)
+        verty = np.zeros(N)
 
-        xmax = 0
-        xmin = 1E6
-        ymax = 0
-        ymin = 1E6
         for k in range(0, N):
-            vertx[k] = float(feature['geometry']['coordinates'][0][0][k][1])    #Collect x-crd of vertices in given polygon
-            verty[k] = float(feature['geometry']['coordinates'][0][0][k][0])    #Collect y-crd of vertices in given polygon
-            if(vertx[k] > xmax): xmax = vertx[k]                                #Collect min/max values of polygon
-            if(vertx[k] < xmin): xmin = vertx[k]
-            if(verty[k] > ymax): ymax = verty[k]
-            if(verty[k] < ymin): ymin = verty[k]
-
+            vertx[k] = float(feature['geometry']['coordinates'][0][0][k][1])
+            verty[k] = float(feature['geometry']['coordinates'][0][0][k][0])
         cross = 0
-        if(xPos < xmin or xPos > xmax or yPos < ymin or yPos > ymax):           #Check if given point is inside max/min values of given polygon
-            continue
-        #Compare each slope from given point to each corner, and check if given point is inside or outside y-domain of polygon
         for i in range(0,N - 1):
             if(((verty[i] > yPos) != (verty[j]>yPos)) and (xPos < (vertx[j] - vertx[i]) * ((yPos-verty[i])/(verty[j]-verty[i]))+vertx[i])):
                 cross += 1
             j = i
         if(cross%2 != 0):
-            neighbourhood = [feature['properties']['neighbourhood'], xPos, yPos]
+            neighbourhood = [feature['properties']['neighbourhood'], xPos, yPos, result[2]]
             return neighbourhood
 
 
