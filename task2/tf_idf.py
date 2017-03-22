@@ -4,15 +4,9 @@ sys.path.append("/usr/local/spark/python/")
 from pyspark import SparkConf, SparkContext
 from pyspark.sql import SQLContext, SparkSession
 from pyspark.sql import *
-from pyspark.sql.types import *
-import numpy as np
-from pyspark.sql import functions as funcs
-from pyspark.sql import functions as col
 from pyspark.sql.functions import *
-from multiprocessing import Pool
-import json
-import numpy as np
-from pyspark.ml.feature import HashingTF, IDF
+
+ID = False
 
 
 def main():
@@ -25,10 +19,16 @@ class airbnb():
         self.sc = SparkContext()
         self.sqlCtx = SQLContext(self.sc)
         self.spark = SparkSession.builder.getOrCreate()
-        self.hashingTF = HashingTF()
         self.listings = self.getListings()
         self.df = self.joinListingsWithNeighborhood()
-        self.computeImportanceForNeighborhood('Chinatown')
+        if(ID):
+            self.df.createOrReplaceTempView('df')
+            res = self.spark.sql("SELECT id, description FROM df")
+            self.computeImportanceForNeighborhood('3308979', res)
+        else:
+            self.df.createOrReplaceTempView('df')
+            res = self.spark.sql("SELECT neighborhood, description FROM df")
+            self.computeImportanceForNeighborhood('Adams', res)
 
 
     #Create listings dataset
@@ -40,22 +40,20 @@ class airbnb():
     #Join neighborhoods with listings
     def joinListingsWithNeighborhood(self):
         neighborhood_df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("mode", "DROPMALFORMED") \
-        .load("San_Francisco_neighborhood.csv")
+        .load("Seattle_neighborhood.csv")
         neighborhood_df = neighborhood_df.withColumn('id', ltrim(neighborhood_df.id))
-        df = self.listings.join(neighborhood_df, self.listings.id == neighborhood_df.id)
+        df = self.listings.join(neighborhood_df,["id"])
         return df
 
     #Compute tf-idf for a neighborhood
-    def computeImportanceForNeighborhood(self, neighborhood):
-        self.df.createOrReplaceTempView('df')
-        res = self.spark.sql("SELECT neighborhood, description FROM df")
+    def computeImportanceForNeighborhood(self, neigh, res):
         res = res.rdd.groupByKey().map(lambda x: (x[0], list(x[1])))
 
         #Get number of times word w appears in document
-        times_word_used_in_document = self.getTimesWordsUsedInDocument(res, neighborhood)
+        times_word_used_in_document = self.getTimesWordsUsedInDocument(res, neigh)
 
         #Get total number of words in document
-        total_num_words = self.getTotalNumberOfWordsInDoc(res, neighborhood)
+        total_num_words = self.getTotalNumberOfWordsInDoc(res, neigh)
 
         #Get words into key, value pairs
         tdfDict = {}
@@ -79,7 +77,7 @@ class airbnb():
         import math
         idfDict = {}
         lines = self.parseRDD(res).map(lambda p: (p.split(' '))).collect()
-        keys = self.parseRDD(res).flatMap(lambda p: (p.split(' '))).collect()
+        keys = self.parseRDD(res).flatMap(lambda p: p.split(' ')).collect()
         for word in keys:
             idfDict['%s'%word] = 0
 
@@ -103,12 +101,19 @@ class airbnb():
 
     #Parse rdd
     def parseRDD(self, rdd):
-        return rdd.map(lambda x: (x[1][0].lower()))\
+        return rdd.map(lambda x: str(x[1]).lower())\
                   .map(lambda i: i.replace(',', ''))\
                   .map(lambda o: o.replace('.',''))\
                   .map(lambda o: o.replace('(',''))\
                   .map(lambda o: o.replace(')',''))\
-                  .map(lambda t: t.replace('!', ''))
+                  .map(lambda t: t.replace('!', ''))\
+                  .map(lambda o: o.replace(']',''))\
+                  .map(lambda o: o.replace('[',''))\
+                  .map(lambda t: t.replace('"', ''))\
+                  .map(lambda o: o.replace('*',''))\
+                  .map(lambda o: o.replace('#',''))\
+                  .map(lambda t: t.replace('?', ''))
+
 
     #Get number of times word w appears in document
     def getTimesWordsUsedInDocument(self, res, neighborhood):
@@ -134,90 +139,3 @@ class airbnb():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""times_word_usied_in_neighs = res.map(lambda x: str(x[1]))\
-                            .map(lambda p: p.lower())\
-                            .flatMap(lambda words: words.split(' '))\
-                            .map(lambda i: i.replace(',', ''))\
-                            .map(lambda o: o.replace('.',''))\
-                            .map(lambda word: (word, 1))\
-                            .reduceByKey(lambda a,b: a+b)"""
-
-
-
-
-
-"""def getDescriptionOnNeighborhood(self):
-    rows_am = self.df.select('description','neighborhood').collect()
-    flat_array = []
-    for row in rows_am:
-        rows_description = self.parseDescription(row.description)
-        if rows_description is not None:
-            for description in rows_description:
-                flat_array.append({'description' : str(description), 'neighborhood' : str(row.neighborhood)})
-
-    dc_RDD = self.sc.parallelize(flat_array)
-    df = self.spark.read.json(dc_RDD)
-
-    df = df.select('neighborhood', 'description')
-    df = df.rdd.groupByKey().mapValues(list).toDF(['neighborhood','description'])
-    return df  """
