@@ -68,7 +68,7 @@ class airbnb():
             tdfDict['%s'%word[0]] = float(word[1])/total_num_words
 
         #print "Number of times word 'the' used in document: %d"%tdfDict.get('the', 0)
-        #print "Total number of words: ", total_num_words
+        print "Total number of words: ", total_num_words
 
         #Compute weights for all words in document
         self.computeWeight(tdfDict, self.computeIDF(res))
@@ -105,7 +105,7 @@ class airbnb():
                     used.append(word)
             used = []
 
-        #print "Number of documents that contain the word '420': %d"%idfDict.get('420',0)
+        print "Number of documents that contain the word 'the': %d"%idfDict.get('the',0)
         #print "Number of documents: ", tot_num_documents
 
         #Get words into key, value pairs
@@ -121,7 +121,7 @@ class airbnb():
                 .replace("!", "").replace("?", "").replace(",", " ") \
                 .replace("/", " ").replace("\"", "").replace(" - ", " ") \
                 .replace(":", " ").replace(";", " ").replace("(", "") \
-                .replace(")", "").replace("*", "").replace("+", "") \
+                .replace(")", "").replace("*", "").replace("+", "").replace('[', '').replace(']', '') \
                 .replace("|", "").replace("~", ""))
 
 
@@ -129,16 +129,14 @@ class airbnb():
     def getTimesWordsUsedInDocument(self, res, neighborhood):
         return res.filter(lambda s: s[0] == '%s'%neighborhood)\
                                         .map(lambda x: str(x[1]))\
-                                        .map(lambda p: p.lower())\
-                                        .map(lambda i: i.replace(',', ''))\
-                                        .map(lambda o: o.replace('.',''))\
-                                        .map(lambda n: n.replace('!', ''))\
-                                        .map(lambda j: j.replace('(', ''))\
-                                        .map(lambda h: h.replace(')', ''))\
-                                        .map(lambda g: g.replace('~', ''))\
-                                        .map(lambda z: z.replace(';', ''))\
-                                        .map(lambda s: s.replace('\"', ''))\
+                                        .map(lambda x: x.replace(".", "") \
+                                        .replace("!", "").replace("?", "").replace(",", " ") \
+                                        .replace("/", " ").replace("\"", "").replace(" - ", " ") \
+                                        .replace(":", " ").replace(";", " ").replace("(", "").replace('[', '').replace(']', '') \
+                                        .replace(")", "").replace("*", "").replace("+", "") \
+                                        .replace("|", "").replace("~", ""))\
                                         .flatMap(lambda words: words.split(' '))\
+                                        .map(lambda p: p.lower())\
                                         .map(lambda word: (word, 1))\
                                         .reduceByKey(lambda a, b: a+b)
     #Get total number of words
@@ -147,17 +145,15 @@ class airbnb():
         #b.coalesce(1).saveAsTextFile('b')
         return  res.filter(lambda s: s[0] == '%s'%neighborhood).map(lambda x: str(x[1]))\
                             .map(lambda p: p.lower())\
-                            .map(lambda i: i.replace(',', ''))\
-                            .map(lambda o: o.replace('.',''))\
-                            .map(lambda z: z.replace(';', ''))\
-                            .map(lambda n: n.replace('!', ''))\
-                            .map(lambda j: j.replace('(', ''))\
-                            .map(lambda g: g.replace('~', ''))\
-                            .map(lambda h: h.replace(')', ''))\
-                            .map(lambda s: s.replace('\"', ''))\
+                            .map(lambda x: x.replace(".", "") \
+                            .replace("!", "").replace("?", "").replace(",", " ") \
+                            .replace("/", " ").replace("\"", "").replace(" - ", " ").replace('[', '').replace(']', '') \
+                            .replace(":", " ").replace(";", " ").replace("(", "") \
+                            .replace(")", "").replace("*", "").replace("+", "") \
+                            .replace("|", "").replace("~", ""))\
                             .map(lambda p: p.lower())\
                             .flatMap(lambda words: words.split(' '))\
-                            .count()
+                            .distinct().count()
 
 
 
