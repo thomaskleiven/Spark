@@ -8,7 +8,6 @@ from pyspark.sql.functions import *
 
 ID = False
 
-
 def main():
     air = airbnb()
     air.joinListingsWithNeighborhood()
@@ -24,11 +23,11 @@ class airbnb():
         if(ID):
             self.df.createOrReplaceTempView('df')
             res = self.spark.sql("SELECT id, description FROM df")
-            self.computeImportanceForNeighborhood('3308979', res)
+            self.computeImportanceForNeighborhood('3013404', res)
         else:
             self.df.createOrReplaceTempView('df')
-            res = self.spark.sql("SELECT neighborhood, description FROM df")
-            self.computeImportanceForNeighborhood('Adams', res)
+            res = self.spark.sql("SELECT neighbourhood, description FROM df")
+            self.computeImportanceForNeighborhood('Williamsburg', res)
 
 
     #Create listings dataset
@@ -39,8 +38,8 @@ class airbnb():
 
     #Join neighborhoods with listings
     def joinListingsWithNeighborhood(self):
-        neighborhood_df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("mode", "DROPMALFORMED") \
-        .load("Seattle_neighborhood.csv")
+        neighborhood_df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("delimiter", "\t")\
+        .load("listings_ids_with_neighborhoods.tsv")
         neighborhood_df = neighborhood_df.withColumn('id', ltrim(neighborhood_df.id))
         df = self.listings.join(neighborhood_df,["id"])
         return df
@@ -58,7 +57,10 @@ class airbnb():
         #Get words into key, value pairs
         tdfDict = {}
         for word in times_word_used_in_document.collect():
-            tdfDict['%s'%word[0]] = float(word[1])/total_num_words
+            tdfDict['%s'%word[0]] = float(word[1])#/total_num_words
+
+        print "Number of times word 'beach' used in document: %d"%tdfDict.get('beach', 0)
+        print "Total number of words: ", total_num_words
 
         #Compute weights for all words in document
         self.computeWeight(tdfDict, self.computeIDF(res))
@@ -69,7 +71,7 @@ class airbnb():
         for word in tdfDict:
             tdfDict['%s'%word] = float(tdfDict.get('%s'%word,0))*float(idfDict.get('%s'%word,0))
         new = dict(sorted(tdfDict.iteritems(), key=operator.itemgetter(1), reverse=True)[:100])
-        print new
+        #print new
         return tdfDict
 
     #Compute the inverse document frequency
@@ -93,6 +95,9 @@ class airbnb():
                     used.append(word)
             used = []
 
+        print "Number of documents that contain the word 'beach': %d"%idfDict.get('beach',0)
+        print "Number of documents: ", tot_num_documents
+
         #Get words into key, value pairs
         for word in idfDict:
             idfDict['%s'%word] = (float(tot_num_documents)/(float(idfDict.get('%s'%word,0))))
@@ -106,24 +111,29 @@ class airbnb():
                   .map(lambda o: o.replace('.',''))\
                   .map(lambda o: o.replace('(',''))\
                   .map(lambda o: o.replace(')',''))\
+                  .map(lambda z: z.replace(';', ''))\
                   .map(lambda t: t.replace('!', ''))\
                   .map(lambda o: o.replace(']',''))\
                   .map(lambda o: o.replace('[',''))\
                   .map(lambda t: t.replace('"', ''))\
                   .map(lambda o: o.replace('*',''))\
                   .map(lambda o: o.replace('#',''))\
-                  .map(lambda t: t.replace('?', ''))
+                  .map(lambda t: t.replace('?', ''))\
+                  .map(lambda g: g.replace('~', ''))
 
 
     #Get number of times word w appears in document
     def getTimesWordsUsedInDocument(self, res, neighborhood):
-        return res.filter(lambda s: s[0] == '%s'%neighborhood).map(lambda x: str(x[1]))\
+        return res.filter(lambda s: s[0] == '%s'%neighborhood)\
+                                        .map(lambda x: str(x[1]))\
                                         .map(lambda p: p.lower())\
                                         .map(lambda i: i.replace(',', ''))\
                                         .map(lambda o: o.replace('.',''))\
                                         .map(lambda n: n.replace('!', ''))\
                                         .map(lambda j: j.replace('(', ''))\
                                         .map(lambda h: h.replace(')', ''))\
+                                        .map(lambda g: g.replace('~', ''))\
+                                        .map(lambda z: z.replace(';', ''))\
                                         .map(lambda s: s.replace('\"', ''))\
                                         .map(lambda u: u.replace('\n', ''))\
                                         .map(lambda y: y.replace('\' \'', ''))\
@@ -132,7 +142,20 @@ class airbnb():
                                         .reduceByKey(lambda a, b: a+b)
     #Get total number of words
     def getTotalNumberOfWordsInDoc(self, res, neighborhood):
+        #print (res.filter(lambda s: s[0] == '%s'%neighborhood)).map(lambda x: str(x[1])).flatMap(lambda b: b.split(' ')).count()
+        #b.coalesce(1).saveAsTextFile('b')
         return  res.filter(lambda s: s[0] == '%s'%neighborhood).map(lambda x: str(x[1]))\
+                            .map(lambda p: p.lower())\
+                            .map(lambda i: i.replace(',', ''))\
+                            .map(lambda o: o.replace('.',''))\
+                            .map(lambda z: z.replace(';', ''))\
+                            .map(lambda n: n.replace('!', ''))\
+                            .map(lambda j: j.replace('(', ''))\
+                            .map(lambda g: g.replace('~', ''))\
+                            .map(lambda h: h.replace(')', ''))\
+                            .map(lambda s: s.replace('\"', ''))\
+                            .map(lambda u: u.replace('\n', ''))\
+                            .map(lambda y: y.replace('\' \'', ''))\
                             .map(lambda p: p.lower())\
                             .flatMap(lambda words: words.split(' '))\
                             .count()
