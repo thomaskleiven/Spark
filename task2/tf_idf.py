@@ -19,7 +19,7 @@ class airbnb():
         self.spark = SparkSession.builder.getOrCreate()
         self.listings = self.getListings()
         print("TF-IDF Assignment")
-        print("Passed arguments " + str(sys.argv))
+        print("Wait for it...")
         args = str(sys.argv).split(',')
         self.df = self.joinListingsWithNeighborhood()
         if(args[1].strip().replace('\'', '') == '-l'):
@@ -58,6 +58,10 @@ class airbnb():
 
         #Get number of times word w appears in document
         times_word_used_in_document = self.getTimesWordsUsedInDocument(res, neigh)
+        if (len(times_word_used_in_document.collect()) < 2):
+            print "Warning! No matching document - please check your arguments before starting"
+            print "Returning..."
+            return
 
         #Get total number of words in document
         total_num_words = self.getTotalNumberOfWordsInDoc(res, neigh)
@@ -68,7 +72,7 @@ class airbnb():
             tdfDict['%s'%word[0]] = float(word[1])/total_num_words
 
         #print "Number of times word 'the' used in document: %d"%tdfDict.get('the', 0)
-        print "Total number of words: ", total_num_words
+        #print "Total number of words: ", total_num_words
 
         #Compute weights for all words in document
         self.computeWeight(tdfDict, self.computeIDF(res))
@@ -83,6 +87,7 @@ class airbnb():
         mydict = [(k, mydict[k]) for k in sorted(mydict, key=mydict.get, reverse=True)]
         with open('imp.tsv', 'w') as f:
             f.write('\n'.join('%s %s'%x for x in mydict))
+        print "Check for a new file in your system"
 
     #Compute the inverse document frequency
     def computeIDF(self, res):
@@ -105,7 +110,7 @@ class airbnb():
                     used.append(word)
             used = []
 
-        print "Number of documents that contain the word 'the': %d"%idfDict.get('the',0)
+        #print "Number of documents that contain the word '420': %d"%idfDict.get('420',0)
         #print "Number of documents: ", tot_num_documents
 
         #Get words into key, value pairs
@@ -120,23 +125,22 @@ class airbnb():
                 .map(lambda x: x.replace(".", "") \
                 .replace("!", "").replace("?", "").replace(",", " ") \
                 .replace("/", " ").replace("\"", "").replace(" - ", " ") \
-                .replace(":", " ").replace(";", " ").replace("(", "") \
-                .replace(")", "").replace("*", "").replace("+", "").replace('[', '').replace(']', '') \
+                .replace(":", " ").replace(";", " ").replace("(", "").replace('_', '').replace('[', '').replace(']', '').replace('--', '').replace('/', '') \
+                .replace(")", "").replace("*", "").replace("+", "") \
                 .replace("|", "").replace("~", ""))
 
 
     #Get number of times word w appears in document
     def getTimesWordsUsedInDocument(self, res, neighborhood):
         return res.filter(lambda s: s[0] == '%s'%neighborhood)\
-                                        .map(lambda x: str(x[1]))\
+                                        .map(lambda x: str(x[1])).map(lambda p: p.lower())\
                                         .map(lambda x: x.replace(".", "") \
-                                        .replace("!", "").replace("?", "").replace(",", " ") \
+                                        .replace("!", "").replace("?", "").replace(",", " ").replace('_', '').replace('[', '').replace(']', '').replace('--', '').replace('/', '') \
                                         .replace("/", " ").replace("\"", "").replace(" - ", " ") \
-                                        .replace(":", " ").replace(";", " ").replace("(", "").replace('[', '').replace(']', '') \
+                                        .replace(":", " ").replace(";", " ").replace("(", "") \
                                         .replace(")", "").replace("*", "").replace("+", "") \
                                         .replace("|", "").replace("~", ""))\
                                         .flatMap(lambda words: words.split(' '))\
-                                        .map(lambda p: p.lower())\
                                         .map(lambda word: (word, 1))\
                                         .reduceByKey(lambda a, b: a+b)
     #Get total number of words
@@ -147,9 +151,9 @@ class airbnb():
                             .map(lambda p: p.lower())\
                             .map(lambda x: x.replace(".", "") \
                             .replace("!", "").replace("?", "").replace(",", " ") \
-                            .replace("/", " ").replace("\"", "").replace(" - ", " ").replace('[', '').replace(']', '') \
+                            .replace("/", " ").replace("\"", "").replace(" - ", " ") \
                             .replace(":", " ").replace(";", " ").replace("(", "") \
-                            .replace(")", "").replace("*", "").replace("+", "") \
+                            .replace(")", "").replace("*", "").replace("+", "").replace('_', '').replace('[', '').replace(']', '').replace('--', '').replace('/', '') \
                             .replace("|", "").replace("~", ""))\
                             .map(lambda p: p.lower())\
                             .flatMap(lambda words: words.split(' '))\
