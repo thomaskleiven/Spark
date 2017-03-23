@@ -6,28 +6,36 @@ from pyspark.sql import SQLContext, SparkSession
 from pyspark.sql import *
 from pyspark.sql.functions import *
 
-ID = False
-
 def main():
     air = airbnb()
-    air.joinListingsWithNeighborhood()
+    #air.joinListingsWithNeighborhood()
 
 class airbnb():
 
     def __init__(self):
         self.sc = SparkContext()
+        self.sc.setLogLevel("ERROR")
         self.sqlCtx = SQLContext(self.sc)
         self.spark = SparkSession.builder.getOrCreate()
         self.listings = self.getListings()
+        print("TF-IDF Assignment")
+        print("Passed arguments " + str(sys.argv))
+        args = str(sys.argv).split(',')
         self.df = self.joinListingsWithNeighborhood()
-        if(ID):
+        if(args[1].strip().replace('\'', '') == '-l'):
+            listing = args[2]
             self.df.createOrReplaceTempView('df')
             res = self.spark.sql("SELECT id, description FROM df")
-            self.computeImportanceForNeighborhood('3013404', res)
-        else:
+            self.computeImportanceForNeighborhood(listing.strip().replace('\'', '').replace(']', ''), res)
+        elif(args[1].strip().replace('\'', '') == '-n'):
+            neighb = args[2]
             self.df.createOrReplaceTempView('df')
             res = self.spark.sql("SELECT neighbourhood, description FROM df")
-            self.computeImportanceForNeighborhood('Williamsburg', res)
+            self.computeImportanceForNeighborhood(neighb.strip().replace('\'', '').replace(']', ''), res)
+        else:
+            print "Illegal path or argument"
+
+        self.sc.stop()
 
 
     #Create listings dataset
@@ -39,7 +47,7 @@ class airbnb():
     #Join neighborhoods with listings
     def joinListingsWithNeighborhood(self):
         neighborhood_df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("delimiter", "\t")\
-        .load("listings_ids_with_neighborhoods.tsv")
+        .load('listings_ids_with_neighborhoods.tsv')
         neighborhood_df = neighborhood_df.withColumn('id', ltrim(neighborhood_df.id))
         df = self.listings.join(neighborhood_df,["id"])
         return df
@@ -57,10 +65,10 @@ class airbnb():
         #Get words into key, value pairs
         tdfDict = {}
         for word in times_word_used_in_document.collect():
-            tdfDict['%s'%word[0]] = float(word[1])#/total_num_words
+            tdfDict['%s'%word[0]] = float(word[1])/total_num_words
 
-        print "Number of times word 'beach' used in document: %d"%tdfDict.get('beach', 0)
-        print "Total number of words: ", total_num_words
+        #print "Number of times word 'the' used in document: %d"%tdfDict.get('the', 0)
+        #print "Total number of words: ", total_num_words
 
         #Compute weights for all words in document
         self.computeWeight(tdfDict, self.computeIDF(res))
@@ -70,9 +78,11 @@ class airbnb():
         import operator
         for word in tdfDict:
             tdfDict['%s'%word] = float(tdfDict.get('%s'%word,0))*float(idfDict.get('%s'%word,0))
-        new = dict(sorted(tdfDict.iteritems(), key=operator.itemgetter(1), reverse=True)[:100])
-        #print new
-        return tdfDict
+
+        mydict = dict(sorted(tdfDict.iteritems(), key=operator.itemgetter(1), reverse=True)[:100])
+        mydict = [(k, mydict[k]) for k in sorted(mydict, key=mydict.get, reverse=True)]
+        with open('imp.tsv', 'w') as f:
+            f.write('\n'.join('%s %s'%x for x in mydict))
 
     #Compute the inverse document frequency
     def computeIDF(self, res):
@@ -95,8 +105,8 @@ class airbnb():
                     used.append(word)
             used = []
 
-        print "Number of documents that contain the word 'beach': %d"%idfDict.get('beach',0)
-        print "Number of documents: ", tot_num_documents
+        #print "Number of documents that contain the word '420': %d"%idfDict.get('420',0)
+        #print "Number of documents: ", tot_num_documents
 
         #Get words into key, value pairs
         for word in idfDict:
@@ -107,19 +117,12 @@ class airbnb():
     #Parse rdd
     def parseRDD(self, rdd):
         return rdd.map(lambda x: str(x[1]).lower())\
-                  .map(lambda i: i.replace(',', ''))\
-                  .map(lambda o: o.replace('.',''))\
-                  .map(lambda o: o.replace('(',''))\
-                  .map(lambda o: o.replace(')',''))\
-                  .map(lambda z: z.replace(';', ''))\
-                  .map(lambda t: t.replace('!', ''))\
-                  .map(lambda o: o.replace(']',''))\
-                  .map(lambda o: o.replace('[',''))\
-                  .map(lambda t: t.replace('"', ''))\
-                  .map(lambda o: o.replace('*',''))\
-                  .map(lambda o: o.replace('#',''))\
-                  .map(lambda t: t.replace('?', ''))\
-                  .map(lambda g: g.replace('~', ''))
+                .map(lambda x: x.replace(".", "") \
+                .replace("!", "").replace("?", "").replace(",", " ") \
+                .replace("/", " ").replace("\"", "").replace(" - ", " ") \
+                .replace(":", " ").replace(";", " ").replace("(", "") \
+                .replace(")", "").replace("*", "").replace("+", "") \
+                .replace("|", "").replace("~", ""))
 
 
     #Get number of times word w appears in document
@@ -135,8 +138,6 @@ class airbnb():
                                         .map(lambda g: g.replace('~', ''))\
                                         .map(lambda z: z.replace(';', ''))\
                                         .map(lambda s: s.replace('\"', ''))\
-                                        .map(lambda u: u.replace('\n', ''))\
-                                        .map(lambda y: y.replace('\' \'', ''))\
                                         .flatMap(lambda words: words.split(' '))\
                                         .map(lambda word: (word, 1))\
                                         .reduceByKey(lambda a, b: a+b)
@@ -154,11 +155,11 @@ class airbnb():
                             .map(lambda g: g.replace('~', ''))\
                             .map(lambda h: h.replace(')', ''))\
                             .map(lambda s: s.replace('\"', ''))\
-                            .map(lambda u: u.replace('\n', ''))\
-                            .map(lambda y: y.replace('\' \'', ''))\
                             .map(lambda p: p.lower())\
                             .flatMap(lambda words: words.split(' '))\
                             .count()
+
+
 
 if __name__ == "__main__":
     main()
