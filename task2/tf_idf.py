@@ -8,48 +8,48 @@ from pyspark.sql.functions import *
 
 def main():
     air = airbnb()
-    #air.joinListingsWithNeighborhood()
 
 class airbnb():
 
+    #Constructor runs application
     def __init__(self):
         self.sc = SparkContext()
         self.sc.setLogLevel("ERROR")
         self.sqlCtx = SQLContext(self.sc)
         self.spark = SparkSession.builder.getOrCreate()
-        self.listings = self.getListings()
         print("TF-IDF Assignment")
         print("Wait for it...")
         args = str(sys.argv).split(',')
+        self.folder = args[1].strip().replace('\'', '').replace(']', '').replace('"', '')
+        self.listings = self.getListings()
         self.df = self.joinListingsWithNeighborhood()
-        if(args[1].strip().replace('\'', '') == '-l'):
-            listing = args[2]
+        if(args[2].strip().replace('\'', '') == '-l'):
+            listing = args[3]
             self.df.createOrReplaceTempView('df')
             res = self.spark.sql("SELECT id, description FROM df")
             self.computeImportanceForNeighborhood(listing.strip().replace('\'', '').replace(']', ''), res)
-        elif(args[1].strip().replace('\'', '') == '-n'):
-            neighb = args[2]
+        elif(args[2].strip().replace('\'', '') == '-n'):
+            neighb = args[3]
             self.df.createOrReplaceTempView('df')
             res = self.spark.sql("SELECT neighbourhood, description FROM df")
             self.computeImportanceForNeighborhood(neighb.strip().replace('\'', '').replace(']', ''), res)
         else:
-            print "Illegal path or argument"
-
+            raise ValueError("Please put in correct folderpath and valid ID/Neighborhood with associated flag in correct order")
         self.sc.stop()
 
 
     #Create listings dataset
     def getListings(self):
         df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("delimiter", "\t") \
-        .load("listings_us.csv")
+        .load(self.folder + "listings_us.csv")
         return df
 
     #Join neighborhoods with listings
     def joinListingsWithNeighborhood(self):
         neighborhood_df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("delimiter", "\t")\
-        .load('listings_ids_with_neighborhoods.tsv')
+        .load(self.folder + 'listings_ids_with_neighborhoods.tsv')
         neighborhood_df = neighborhood_df.withColumn('id', ltrim(neighborhood_df.id))
-        df = self.listings.join(neighborhood_df,["id"])
+        df = self.listings.join(neighborhood_df,['id'])
         return df
 
     #Compute tf-idf for a neighborhood
@@ -58,10 +58,8 @@ class airbnb():
 
         #Get number of times word w appears in document
         times_word_used_in_document = self.getTimesWordsUsedInDocument(res, neigh)
-        if (len(times_word_used_in_document.collect()) < 2):
-            print "Warning! No matching document - please check your arguments before starting"
-            print "Returning..."
-            return
+        if (len(times_word_used_in_document.collect()) < 1):
+            raise ValueError("Please put in correct folderpath and valid ID/Neighborhood with associated flag in correct order")
 
         #Get total number of words in document
         total_num_words = self.getTotalNumberOfWordsInDoc(res, neigh)
@@ -93,7 +91,7 @@ class airbnb():
     def computeIDF(self, res):
         import math
         idfDict = {}
-        lines = self.parseRDD(res).map(lambda p: (p.split(' '))).collect()
+        lines = self.parseRDD(res).map(lambda p: p.split(' ')).collect()
         keys = self.parseRDD(res).flatMap(lambda p: p.split(' ')).collect()
         for word in keys:
             idfDict['%s'%word] = 0
@@ -124,9 +122,9 @@ class airbnb():
         return rdd.map(lambda x: str(x[1]).lower())\
                 .map(lambda x: x.replace(".", "") \
                 .replace("!", "").replace("?", "").replace(",", " ") \
-                .replace("/", " ").replace("\"", "").replace(" - ", " ") \
+                .replace("/", " ").replace("\"", " ").replace(" - ", " ") \
                 .replace(":", " ").replace(";", " ").replace("(", "").replace('_', '').replace('[', '').replace(']', '').replace('--', '').replace('/', '') \
-                .replace(")", "").replace("*", "").replace("+", "") \
+                .replace(")", "").replace("*", "").replace("+", "").replace('\' ', '')\
                 .replace("|", "").replace("~", ""))
 
 
@@ -138,9 +136,9 @@ class airbnb():
                                         .replace("!", "").replace("?", "").replace(",", " ").replace('_', '').replace('[', '').replace(']', '').replace('--', '').replace('/', '') \
                                         .replace("/", " ").replace("\"", "").replace(" - ", " ") \
                                         .replace(":", " ").replace(";", " ").replace("(", "") \
-                                        .replace(")", "").replace("*", "").replace("+", "") \
+                                        .replace(")", "").replace("*", "").replace("+", "").replace('\' ', '') \
                                         .replace("|", "").replace("~", ""))\
-                                        .flatMap(lambda words: words.split(' '))\
+                                        .flatMap(lambda words: words.split(' ')).map(lambda g: g.replace(' ', '')).map(lambda z: z.strip())\
                                         .map(lambda word: (word, 1))\
                                         .reduceByKey(lambda a, b: a+b)
     #Get total number of words
@@ -152,11 +150,11 @@ class airbnb():
                             .map(lambda x: x.replace(".", "") \
                             .replace("!", "").replace("?", "").replace(",", " ") \
                             .replace("/", " ").replace("\"", "").replace(" - ", " ") \
-                            .replace(":", " ").replace(";", " ").replace("(", "") \
+                            .replace(":", " ").replace(";", " ").replace("(", "").replace('\' ', '') \
                             .replace(")", "").replace("*", "").replace("+", "").replace('_', '').replace('[', '').replace(']', '').replace('--', '').replace('/', '') \
                             .replace("|", "").replace("~", ""))\
                             .map(lambda p: p.lower())\
-                            .flatMap(lambda words: words.split(' '))\
+                            .flatMap(lambda words: words.split(' ')).map(lambda g: g.replace(' ', '')).map(lambda z: z.strip())\
                             .distinct().count()
 
 
