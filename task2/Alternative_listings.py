@@ -27,10 +27,8 @@ class Alternative_listing:
 
         self.listings = self.getListings()      #dataframe for listings
         self.calender = self.getCalender()      #dataframe for calender
-        self.listingsStrippedHeader = ["id", "city", "price", "room_type","longitude", "latitude", "amenities"]
-        self.listingsStripped = self.getWantedColumns(self.listings, self.listingsStrippedHeader)   #dataframe for listings with only relevant columns
-
-        #df = self.getDescriptionOnNeighborhood()
+        self.header = ["id", "city", "price", "room_type","longitude", "latitude", "amenities", "name", "picture_url", "review_scores_rating", "last_review"]
+        self.listingsStripped = self.getWantedColumns(self.listings, self.header)   #dataframe for listings with only relevant columns
 
         self.userInput, self.listingChosen = self.inputFromUser()       #return two arrays with user input and the chosen listing
         self.sortByCityPriceDistance()                                  #sorts listingsStripped after City, Price and Distance
@@ -71,7 +69,7 @@ class Alternative_listing:
         with open ('listingSelected.csv', 'w') as f:
             row = value.collect()
             rowDict = row[0].asDict()
-            writer = csv.DictWriter(f, fieldnames=self.listingsStrippedHeader)
+            writer = csv.DictWriter(f, fieldnames=self.header)
             writer.writeheader()
             writer.writerow(rowDict)
         return value
@@ -147,7 +145,7 @@ class Alternative_listing:
         for row in rows_am:
             row_amenities = parseAmenities(row.amenities)
             common_amenities = len(np.intersect1d(amenitiesChosenArray,row_amenities))
-            flat_array.append({'id': str(row.id), 'common_amenities': int(common_amenities)})
+            flat_array.append({'id': str(row.id), 'number_of_common_amenities': int(common_amenities)})
 
         idCommonAmenities_df = self.spark.createDataFrame(flat_array)
 
@@ -155,14 +153,28 @@ class Alternative_listing:
 
     #Output the n best alternatives based on the number of common amenities with listing of the user input given id
     def findTopAlternatives(self):
-        headerList = ["id","city", "room_type", "latitude", "longitude", "price", "amenities", "common_amenities"]
+        headerList = ["id","name","number_of_common_amenities", "distance", "price"]
+        self.header.append("number_of_common_amenities")
         self.listingsCalender = self.listingsCalender\
         .select(headerList)\
-        .sort('common_amenities', ascending = False)
-        with open ('altListTopN.csv', 'w') as f:
-            writer = csv.DictWriter(f, fieldnames=headerList)
+        .sort('number_of_common_amenities', ascending = False)
+        with open ('alternativeListTopN.tsv', 'w') as f:
+            writer = csv.DictWriter(f,delimiter ='\t', fieldnames=headerList)
             writer.writeheader()
             for row in self.listingsCalender.limit(int(self.userInput[4])).collect():
+                row = row.asDict()
+                writer.writerow(row)
+
+    #Writes all potential alternatives to file with interesting columns
+    def visualtisationWriter(self):
+        self.header.append("number_of_common_amenities")
+        self.listingsCalender = self.listingsCalender\
+        .select(self.header)\
+        .sort('common_amenities', ascending = False)
+        with open ('alternativeListTopN.csv', 'w') as f:
+            writer = csv.DictWriter(f, fieldnames=self.header)
+            writer.writeheader()
+            for row in self.listingsCalender.collect():
                 row = row.asDict()
                 writer.writerow(row)
 
@@ -176,11 +188,6 @@ class Alternative_listing:
         listingById = self.getListingValueById(inputUser[0])
         listingByIdArray = self.getRowAsArray(listingById)
         return inputUser,listingByIdArray
-
-
-    def udf_testing(self, val1, val2):
-        return val1+val2
-
 
 
 if __name__ == "__main__":
