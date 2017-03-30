@@ -25,12 +25,16 @@ class Alternative_listing:
         .config("spark.some.config.option", "some-value") \
         .getOrCreate()
 
+        self.userInput = self.inputFromUser()                           #return array with user input
+        self.folder = self.userInput[5]                                 #string with path to folder with listings_us.csv and calender_us.csv
+
         self.listings = self.getListings()      #dataframe for listings
         self.calender = self.getCalender()      #dataframe for calender
         self.header = ["id", "city", "price", "room_type","longitude", "latitude", "amenities", "name", "picture_url", "review_scores_rating", "last_review"]
         self.listingsStripped = self.getWantedColumns(self.listings, self.header)   #dataframe for listings with only relevant columns
 
-        self.userInput, self.listingChosen = self.inputFromUser()       #return two arrays with user input and the chosen listing
+        self.listingChosen = self.getListing()                          #return array with chose listing
+
         self.sortByCityPriceDistance()                                  #sorts listingsStripped after City, Price and Distance
         self.listingsCalender = self.joinListingsWithCalender()         #join listingsStripped with Calender
         self.sortByDateAvailability()                                   #sorts listingsCalender after Date and Availability
@@ -41,13 +45,13 @@ class Alternative_listing:
     #Gets the listings-data an make it into a dataframe
     def getListings(self):
         df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("delimiter", "\t") \
-        .load("airbnb_datasets/listings_us.csv")
+        .load(self.folder + "listings_us.csv")
         return df
 
     #Gets the calender-data an make it into a dataframe
     def getCalender(self):
         df = self.spark.read.format("com.databricks.spark.csv").option("header", "true").option("delimiter", "\t") \
-        .load("airbnb_datasets/calendar_us.csv")
+        .load(self.folder + "calendar_us.csv")
         return df
 
     #Make a dataframe from df with the columns columns
@@ -78,6 +82,12 @@ class Alternative_listing:
     def getRowAsArray(self,df):
         rowList = df.rdd.flatMap(list).collect()
         return rowList
+
+    #Returns listing given by listing id from th user input
+    def getListing(self):
+        listingById = self.getListingValueById(self.userInput[0])
+        listingByIdArray = self.getRowAsArray(listingById)
+        return listingByIdArray
 
     #Calculates the maximum amount a user is willing to pay for a accomdation
     def calculateMaxPrice(self,price,maxIncrease):
@@ -181,13 +191,14 @@ class Alternative_listing:
     #Takes input from user, check enough fields are given and select a listing based on the id
     def inputFromUser(self):
         inputUser = sys.argv[1:]
+        print len(inputUser)
+        if (len(inputUser) != 6):
+            if (len(inputUser) < 6)
+                raise ValueError("Not enough arguments")
+            elif (len(inputUser) > 6)
+                raise ValueError("Too many arguments")
 
-        if (len(inputUser) != 5):
-            raise ValueError("Not enough arguments")
-
-        listingById = self.getListingValueById(inputUser[0])
-        listingByIdArray = self.getRowAsArray(listingById)
-        return inputUser,listingByIdArray
+        return inputUser
 
 
 if __name__ == "__main__":
