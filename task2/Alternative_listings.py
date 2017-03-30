@@ -171,7 +171,7 @@ class Alternative_listing:
         self.listingsCalender = self.listingsCalender\
         .select(self.header)\
         .sort('common_amenities', ascending = False)
-        with open ('alternativeListTopN.csv', 'w') as f:
+        with open ('visualizationAlternatives.csv', 'w') as f:
             writer = csv.DictWriter(f, fieldnames=self.header)
             writer.writeheader()
             for row in self.listingsCalender.collect():
