@@ -168,6 +168,8 @@ class Alternative_listing:
         self.listingsCalender = self.listingsCalender\
         .select(headerList)\
         .sort('number_of_common_amenities', ascending = False)
+
+        #Collect the dataframe and using csv-library to write to alternativeListTopN.tsv
         with open ('alternativeListTopN.tsv', 'w') as f:
             writer = csv.DictWriter(f,delimiter ='\t', fieldnames=headerList)
             writer.writeheader()
@@ -193,9 +195,9 @@ class Alternative_listing:
         inputUser = sys.argv[1:]
         print len(inputUser)
         if (len(inputUser) != 6):
-            if (len(inputUser) < 6)
+            if (len(inputUser) < 6):
                 raise ValueError("Not enough arguments")
-            elif (len(inputUser) > 6)
+            elif (len(inputUser) > 6):
                 raise ValueError("Too many arguments")
 
         return inputUser
